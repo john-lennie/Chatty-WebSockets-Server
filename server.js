@@ -14,22 +14,52 @@ const server = express()
 // Create the WebSockets server
 const wss = new WebSocket.Server({ server });
 
+// To keep track of number of connections
+let numOfConnections = {
+  type: "incomingConnectionCount",
+  connections: 0
+}
+
 // Set up a callback that will run when a client connects to the server
 // When a client connects they are assigned a socket, represented by
 // the ws parameter in the callback.
 wss.on('connection', (ws) => {
   console.log('Client connected');
+  numOfConnections.connections++;
+  wss.clients.forEach(function each(client) {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(numOfConnections));
+    }
+  });
   ws.on('message', function incoming(message) {
     let messageObject = JSON.parse(message);
-    let uuid = uuidv1();
-    messageObject.id = uuid;
-    let messageObjectToString = JSON.stringify(messageObject);
+    switch(messageObject.type) {
+        case "postMessage":
+          let uuid = uuidv1();
+          messageObject.type = "incomingMessage";
+          messageObject.id = uuid;
+          wss.clients.forEach(function each(client) {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify(messageObject));
+            }
+          });
+          break;
+        case "postNotification":
+          // handle incoming notification
+          break;
+        default:
+          // show an error in the console if the message type is unknown
+          throw new Error("Unknown event type " + message.type);
+      }
+  });
+  // Set up a callback for when a client closes the socket. This usually means they closed their browser.
+  ws.on('close', () => {
+    console.log('Client disconnected');
+    numOfConnections.connections--;
     wss.clients.forEach(function each(client) {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(messageObjectToString);
+        client.send(JSON.stringify(numOfConnections));
       }
     });
   });
-  // Set up a callback for when a client closes the socket. This usually means they closed their browser.
-  ws.on('close', () => console.log('Client disconnected'));
 });
